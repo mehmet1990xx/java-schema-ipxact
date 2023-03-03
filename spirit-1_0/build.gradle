@@ -1,0 +1,118 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+plugins {
+    id 'java'
+    id 'org.unbroken-dome.xjc' version '2.1.0-SNAPSHOT'
+}
+
+group projectGroup
+version projectVersion
+
+var VERSION = '1.0'
+var PACKAGE = 'org.spiritconsortium.SPIRIT_1_0'
+var RESPATH = 'org/spiritconsortium/SPIRIT_1_0'
+
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+String xmlRegistryClass = null
+dependencies {
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_xjc'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_xjc}"
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_core'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_core}"
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_impl'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_impl}"
+    if(project.hasProperty('xjcTool__javax_xml_bind__jaxb_api'))
+        xjcTool "${xjcTool__javax_xml_bind__jaxb_api}"
+    if(project.hasProperty('xjcTool__jakarta_xml_bind__jakarta_xml_bind_api'))
+        xjcTool "${xjcTool__jakarta_xml_bind__jakarta_xml_bind_api}"
+
+    if(project.hasProperty('jakarta_xml_bind__jakarta_xml_bind_api')) {
+        xmlRegistryClass = 'jakarta.xml.bind.annotation.XmlRegistry'
+        implementation "${jakarta_xml_bind__jakarta_xml_bind_api}"
+    } else if(project.hasProperty('javax_xml_bind__jaxb_api')) {
+        xmlRegistryClass = 'javax.xml.bind.annotation.XmlRegistry'
+        implementation "${javax_xml_bind__jaxb_api}"
+    }
+
+    if(project.hasProperty('jakarta_annotation__jakarta_annotation_api'))
+        implementation "${jakarta_annotation__jakarta_annotation_api}"
+    if(project.hasProperty('javax_annotation__javax_annotation_api'))
+        implementation "${javax_annotation__javax_annotation_api}"
+}
+
+sourceSets {
+    main {
+        xjcGenerateEpisode = true
+
+        if(project.hasProperty('jakarta_annotation__jakarta_annotation_api') || project.hasProperty('javax_annotation__javax_annotation_api'))
+            xjcExtraArgs.addAll '-mark-generated'
+	if(project.hasProperty('xjcToolExt__mark_generated__Xann'))
+            xjcExtraArgs.addAll '-Xann', "${xjcToolExt__mark_generated__Xann}"
+
+        if(project.hasProperty('xjcBinding_srcDir'))
+            xjcBinding.srcDir("${xjcBinding_srcDir}")
+    }
+}
+
+processResources {
+    filter ReplaceTokens, tokens: [
+        "xmlRegistryClass": xmlRegistryClass
+    ]
+    from ('src/main/schema/1.0') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/xjb2') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/xjb3') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/services/XmlRegistry') {
+        into "META-INF/services/"
+        rename "XmlRegistry", "${xmlRegistryClass}"
+    }
+}
+
+java {
+    sourceCompatibility = "${javaSourceCompatibility}"
+    targetCompatibility = "${javaTargetCompatibility}"
+    withJavadocJar()
+    withSourcesJar()
+}
+
+jar {
+    manifest {
+        attributes(
+                'Build-Jdk-Spec': getTargetCompatibility(),
+                'Implementation-Title': 'SPIRIT Consortium XSD Schemas 1.0',
+                'Implementation-Version': VERSION,
+                'X-XSD-targetNamespace': 'http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.0',
+                'X-XSD-Schema-Properties': "${RESPATH}/schema/schema.properties",
+                'X-JAXB-Package': PACKAGE)
+
+        if(project.hasProperty('xjc.targetVersion'))
+            attributes('X-JAXB-Target': project.property('xjc.targetVersion') as String)
+
+        if(xmlRegistryClass != null)
+            attributes('X-JAXB-XmlRegistry': "${xmlRegistryClass}=${PACKAGE}.ObjectFactory")
+
+        if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_xjc')) {
+            attributes('X-XJC': "${xjcTool__com_sun_xml_bind__jaxb_xjc}")
+        }
+        if(project.hasProperty('jakarta_xml_bind__jakarta_xml_bind_api')) {
+            attributes('X-JAXB': "${jakarta_xml_bind__jakarta_xml_bind_api}")
+        } else if(project.hasProperty('javax_xml_bind__jaxb_api')) {
+            attributes('X-JAXB': "${javax_xml_bind__jaxb_api}")
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+apply from: "${rootProject.projectDir}/publish.gradle"

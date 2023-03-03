@@ -1,0 +1,19 @@
+
+This is a marker file to highlight the following modifications have been made to the
+original XSD files in order to generate interoperability WSDL client stubs.
+
+The LICENSE the XSD/WSDL/HTML/XML files are utilized under prohibits any modification
+of the files when redistributed.  So this separate file exists to document the nature
+of the modification required for AXIS1 processing.
+
+
+TGI/TGI.wsdl:50:
+        <xsd:union memberTypes="xsd:string"/>
+this line was replaced with:
+        <!-- XSD change by dlmiles, AXIS1 generation error on the original -->
+        <!-- This is not really xsd:union unless you have multiple memberTypes specified ? -->
+        <xsd:restriction base="xsd:string"/>
+        <!-- <xsd:union memberTypes="xsd:string"/> -->
+
+
+This change was carried by via an XSLT using transform-wsdl.xsl.

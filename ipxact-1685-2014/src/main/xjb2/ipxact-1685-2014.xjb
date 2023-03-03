@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jaxb:bindings
+            xmlns:jaxb="http://java.sun.com/xml/ns/jaxb"
+            xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://java.sun.com/xml/ns/jaxb http://java.sun.com/xml/ns/jaxb/bindingschema_2_0.xsd"
+            jaxb:version="2.0">
+
+    <!-- xmlns:spirit="http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+      targetNamespace="http://www.accellera.org/XMLSchema/IPXACT/1685-2014"
+      -->
+    <jaxb:bindings schemaLocation="../schema/1685-2014/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.IPXACT_1685_2014"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+</jaxb:bindings>

@@ -1,0 +1,110 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+
+    dependencies {
+        // 12.0 JDK11+ ClassFileVersion:55.0
+        // 11.5 is considered stable release train at this time
+        classpath group: 'net.sf.saxon', name: 'Saxon-HE', version: '11.5'
+    }
+}
+
+plugins {
+    id 'java'
+    // 3.2.2 JDK8+
+    // 3.3.1 JDK11+
+    id 'com.intershop.gradle.wsdl' version '3.2.2'
+    id 'com.nwalsh.gradle.saxon.saxon-gradle' version '0.10.1'
+}
+
+group projectGroup
+version projectVersion
+
+var VERSION = '1685-2009'
+var PACKAGE = 'org.spiritconsortium.SPIRIT_1685_2009.TGI.axis1'
+var RESPATH = 'org/spiritconsortium/SPIRIT_1685_2009/TGI/axis1'
+
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+dependencies {
+    // We are having to use Axis 1.x due to the use of soapenc in the WSDL
+    // Unfortunately at this time there are multiple CVE vulnerabilities in the original version from Apr 2006
+    implementation "org.apache.axis:axis:${org_apache_axis__axis}"
+
+    if(project.hasProperty('javax_xml_rpc__javax_xml_rpc_api')) {
+        implementation "${javax_xml_rpc__javax_xml_rpc_api}"
+    }
+}
+
+wsdl {
+    axis1 {
+        genNameAxis1 {
+            // original
+            // wsdlFile = file("src/main/schema/1685-2009/TGI/TGI.wsdl")
+
+            // XSLT processed see src/main/schema/1685-2009/TGI/MODIFIED
+            wsdlFile = file("${buildDir}/generated/TGI.wsdl")
+
+            packageName = PACKAGE
+        }
+    }
+}
+
+processResources {
+    from ('src/main/schema/1685-2009') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/xslt') {
+        into RESPATH + '/schema/TGI'
+    }
+}
+
+java {
+    sourceCompatibility = "${javaSourceCompatibility}"
+    targetCompatibility = "${javaTargetCompatibility}"
+    withJavadocJar()
+    withSourcesJar()
+
+    compileJava {
+        // AXIS1 is from a different era, these are never going to be fixed
+        //options.compilerArgs << '-Xlint:deprecation'
+        //options.compilerArgs << '-Xlint:unchecked'
+    }
+}
+
+jar {
+    manifest {
+        attributes(
+                'Build-Jdk-Spec': getTargetCompatibility(),
+                'Implementation-Title': 'SPIRIT Consortium XSD Schemas 1685-2009 WSDL (axis1)',
+                'Implementation-Version': VERSION,
+                'X-XSD-targetNamespace': 'http://www.spiritconsortium.org/XMLSchema/SPIRIT/1685-2009',
+                'X-XSD-Schema-Properties': "${RESPATH}/schema/schema.properties",
+                'X-AXIS1-Package': PACKAGE,
+                'X-AXIS1-port': "java.rmi.Remote=${PACKAGE}.TGI_port",
+                'X-AXIS1-bindingStub': "org.apache.axis.client.Stub=${PACKAGE}.TGI_bindingStub",
+                // bnd does this better
+                'X-AXIS1-Version': "${org_apache_axis__axis}",
+                'X-RPC-API-Version': "${javax_xml_rpc__javax_xml_rpc_api}")
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+import com.nwalsh.gradle.saxon.SaxonXsltTask
+tasks.register('xslt', SaxonXsltTask) {
+    stylesheet file("${projectDir}/src/main/xslt/transform-wsdl.xsl")
+    input file("${projectDir}/src/main/schema/1685-2009/TGI/TGI.wsdl")
+    output file("${buildDir}/generated/TGI.wsdl")
+    //debug true
+}
+tasks.axis1Wsdl2javaGenNameAxis1.dependsOn('xslt')
+
+apply from: "${rootProject.projectDir}/publish.gradle"

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jaxb:bindings
+            xmlns:jaxb="https://jakarta.ee/xml/ns/jaxb"
+            xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://jakarta.ee/xml/ns/jaxb https://jakarta.ee/xml/ns/jaxb/bindingschema_3_0.xsd"
+            jaxb:version="3.0">
+
+    <!-- xmlns:spirit="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.2"
+      targetNamespace="http://www.spiritconsortium.org/XMLSchema/SPIRIT/1.2"
+      -->
+    <jaxb:bindings schemaLocation="../schema/1.2/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.spiritconsortium.SPIRIT_1_2"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+</jaxb:bindings>

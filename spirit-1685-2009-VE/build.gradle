@@ -1,0 +1,190 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+plugins {
+    id 'java'
+    id 'org.unbroken-dome.xjc' version '2.1.0-SNAPSHOT'
+}
+
+group projectGroup
+version projectVersion
+
+var VERSION = '1685-2009-VE'
+var PACKAGE = 'org.accellera.SPIRIT_1685_2009_VE'
+var RESPATH = 'org/accellera/SPIRIT_1685_2009_VE'
+
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+String xmlRegistryClass = null
+dependencies {
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_xjc'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_xjc}"
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_core'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_core}"
+    if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_impl'))
+        xjcTool "${xjcTool__com_sun_xml_bind__jaxb_impl}"
+    if(project.hasProperty('xjcTool__javax_xml_bind__jaxb_api'))
+        xjcTool "${xjcTool__javax_xml_bind__jaxb_api}"
+    if(project.hasProperty('xjcTool__jakarta_xml_bind__jakarta_xml_bind_api'))
+        xjcTool "${xjcTool__jakarta_xml_bind__jakarta_xml_bind_api}"
+
+    if(project.hasProperty('jakarta_xml_bind__jakarta_xml_bind_api')) {
+        xmlRegistryClass = 'jakarta.xml.bind.annotation.XmlRegistry'
+        implementation "${jakarta_xml_bind__jakarta_xml_bind_api}"
+    } else if(project.hasProperty('javax_xml_bind__jaxb_api')) {
+        xmlRegistryClass = 'javax.xml.bind.annotation.XmlRegistry'
+        implementation "${javax_xml_bind__jaxb_api}"
+    }
+
+    if(project.hasProperty('jakarta_annotation__jakarta_annotation_api'))
+        implementation "${jakarta_annotation__jakarta_annotation_api}"
+    if(project.hasProperty('javax_annotation__javax_annotation_api'))
+        implementation "${javax_annotation__javax_annotation_api}"
+
+    // Sibling project for catalog.cat use of classpath: XSD resolver
+    implementation project(':spirit-1685-2009') // "${group}:spirit-1685-2009:${projectVersion}"
+
+    //xjcClasspath(project(':spirit-1685-2009'))
+    xjcEpisodes(configurations.compileClasspath)
+
+    xjcCatalogResolution(project(':spirit-1685-2009')) {
+        transitive = false
+    }
+}
+
+sourceSets {
+    main {
+        xjcCatalog.srcDirs += "$buildDir/catalog"   // append this to defaults
+
+        xjcGenerateEpisode = true
+
+        if(project.hasProperty('jakarta_annotation__jakarta_annotation_api') || project.hasProperty('javax_annotation__javax_annotation_api'))
+            xjcExtraArgs.addAll '-mark-generated'
+	if(project.hasProperty('xjcToolExt__mark_generated__Xann'))
+            xjcExtraArgs.addAll '-Xann', "${xjcToolExt__mark_generated__Xann}"
+
+        if(project.hasProperty('xjcBinding_srcDir'))
+            xjcBinding.srcDir("${xjcBinding_srcDir}")
+
+        java {
+            exclude '**/SPIRIT_1685_2009/ObjectFactory.java'
+        }
+    }
+}
+
+processResources {
+    filter ReplaceTokens, tokens: [
+        "xmlRegistryClass": xmlRegistryClass
+    ]
+    from ('src/main/schema/1685-2009-VE-1.0') {
+        into RESPATH + '/schema'
+        // exclude TGI/TGI.wsdl (as it is SPIRIT/1.5 which this JAR is not authoritative for)
+    }
+    from ('src/main/xjb2') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/xjb3') {
+        into RESPATH + '/schema'
+    }
+    from ('src/main/services/XmlRegistry') {
+        into "META-INF/services/"
+        rename "XmlRegistry", "${xmlRegistryClass}"
+    }
+}
+
+java {
+    sourceCompatibility = "${javaSourceCompatibility}"
+    targetCompatibility = "${javaTargetCompatibility}"
+    withJavadocJar()
+    withSourcesJar()
+}
+
+jar {
+    manifest {
+        attributes(
+                'Build-Jdk-Spec': getTargetCompatibility(),
+                'Implementation-Title': 'SPIRIT Consortium XSD Schemas 1685-2009-VE',
+                'Implementation-Version': VERSION,
+                'X-XSD-targetNamespace': 'http://www.accellera.org/XMLSchema/SPIRIT/1685-2009-VE',
+                'X-XSD-Schema-Properties': "${RESPATH}/schema/schema.properties",
+                'X-JAXB-Package': PACKAGE)
+
+        if(project.hasProperty('xjc.targetVersion'))
+            attributes('X-JAXB-Target': project.property('xjc.targetVersion') as String)
+
+        if(xmlRegistryClass != null)
+            attributes('X-JAXB-XmlRegistry': "${xmlRegistryClass}=${PACKAGE}.ObjectFactory")
+
+        if(project.hasProperty('xjcTool__com_sun_xml_bind__jaxb_xjc')) {
+            attributes('X-XJC': "${xjcTool__com_sun_xml_bind__jaxb_xjc}")
+        }
+        if(project.hasProperty('jakarta_xml_bind__jakarta_xml_bind_api')) {
+            attributes('X-JAXB': "${jakarta_xml_bind__jakarta_xml_bind_api}")
+        } else if(project.hasProperty('javax_xml_bind__jaxb_api')) {
+            attributes('X-JAXB': "${javax_xml_bind__jaxb_api}")
+        }
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// It appears we need to generate a temporary catalog.cat
+tasks.create("generateCatalog") {
+    var buildDirCatalog = new File(buildDir, "catalog")
+    var catalogFile = new File(buildDirCatalog, "catalog_gradle_build.cat")
+    outputs.file(catalogFile)
+    doLast {
+        // This is the systemId that will be searched for to be resolved from the other project (:spirit-1685-2009)
+        var invalidFileUrlDir = file("${projectDir}/src/main/schema/1685-2009").toURI()
+
+        buildDirCatalog.mkdirs()
+
+        logger.info("Building {} with {}", catalogFile, invalidFileUrlDir)
+
+        // WTF: The XJC process seems to performs 2 passes on the XML.
+        //   From the outside it looks like pass 1 succeeds with our static catalog files from src/main/schema can
+        //     help it resolve, locate and load all the XML documents it needs.
+        //   Then it starts another pass, constructing a DOM and all that work seems to get forgotten and all the
+        //     documents are now systemId with absolute file:/// URI paths.  So now we need a catalog entry that
+        //     knows the file:/// URI for the source directory to rewrite that and push it back to using classpath:.
+        catalogFile.text = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE catalog
+  PUBLIC "-//OASIS//DTD Entity Resolution XML Catalog V1.0//EN"
+         "http://www.oasis-open.org/committees/entity/release/1.0/catalog.dtd">
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog"
+         prefer="public">
+
+    <!-- This file should never make it into the output artifact, it is only used by XJC during the build -->
+    <rewriteSystem
+        systemIdStartString="${invalidFileUrlDir}/"
+        rewritePrefix="classpath:org/spiritconsortium/SPIRIT_1685_2009/schema/"/>
+
+</catalog>
+"""
+    }
+}
+tasks.xjcGenerate.dependsOn("generateCatalog")        // perform last, just before xjcGenerate
+
+apply from: "${rootProject.projectDir}/publish.gradle"
+
+// github-packages: won't allow uppercase in artifactId
+// publishMavenJavaPublicationToGithub-packagesRepository
+tasks.withType(PublishToMavenRepository).configureEach {
+    println("Disabled PublishToMavenRepository: ${it.name}")
+    it.enabled = false		// FIXME remove this
+}
+
+//publishing {
+//    publications {
+//        maven(MavenPublication) {	// otherPub maven mavenJava
+//            // github-packages has lowercase artifactId policy ?
+//            artifactId = 'spirit-1685-2009-ve'
+//            from components.java
+//            enabled = false
+//        }
+//    }
+//}

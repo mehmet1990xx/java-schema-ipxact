@@ -1,0 +1,42 @@
+//
+//
+//
+//
+//
+
+pluginManagement {
+    // We are using this version of gradle-xjc-plugin because 2.0.0 does not
+    // support all the building modes we use.  Pull requests are upstream.
+    repositories {
+        // 3rd party releases and SNAPSHOTs
+        maven {
+            url "https://dlmiles.github.io/gradle-xjc-plugin/java8/maven2"
+	    // url "https://maven.pkg.github.com/dlmiles/gradle-xjc-plugin"
+            content {
+                // this repository *only* contains artifacts for specific groups
+                includeGroup "org.unbroken-dome.xjc"
+                includeGroup "org.unbroken-dome.gradle-plugins"
+
+                includeGroup "io.github.dlmiles.xjc"
+                includeGroup "io.github.dlmiles.gradle-plugins"
+            }
+        }
+
+        // Official releases only
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'ipxact-schemas'
+
+include 'spirit-1_0'
+include 'spirit-1_1'
+include 'spirit-1_2'
+include 'spirit-1_4'
+include 'spirit-1_5'
+include 'spirit-1685-2009'
+include 'spirit-1685-2009-VE'
+include 'ipxact-1685-2014'
+include 'spirit-1_4-wsdl-axis1'
+include 'spirit-1_5-wsdl-axis1'
+include 'spirit-1685-2009-wsdl-axis1'

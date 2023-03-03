@@ -1,0 +1,115 @@
+//
+//
+//
+project.plugins.apply('maven-publish')
+
+if(project.plugins.hasPlugin('java')) {
+    javadoc {
+        if(JavaVersion.current().isJava8Compatible()) {
+            allprojects {
+                tasks.withType(Javadoc).tap {
+                    configureEach {
+                        // These auto-generated XJC/WSDL JavaDocs are far from perfect
+                        options.addStringOption('Xdoclint:none', '-quiet')
+                    }
+                }
+            }
+        }
+        if(JavaVersion.current().isJava9Compatible()) {
+            options.addBooleanOption('html5', true)
+        }
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            pom {
+                description = ''
+                url = 'https://github.com/dlmiles/ipxact-schemas'
+
+                licenses {
+                    license {
+                        // Covering original copyright works of XSD/WSDL/HTML/XML documents
+                        name = 'Copyright 2006-2012 Accellera Systems Initiative. All rights reserved.'
+                        url = 'http/www.accellera.org/XMLSchema/'
+                    }
+                    license {
+                        // Covering all other items of this project
+                        name = 'The MIT License'
+                        url = 'https://opensource.org/license/mit/'
+                    }
+                }
+
+                scm {
+                    url = 'https://github.com/dlmiles/ipxact-schemas'
+                    connection = 'scm:https://github.com/dlmiles/ipxact-schemas.git'
+                    developerConnection = 'scm:git://github.com/dlmiles/ipxact-schemas.git'
+                }
+
+                developers {
+                    developer {
+                        id = 'dlmiles'
+                        name = 'Darryl L. Miles'
+                        email = 'darryl.miles@darrylmiles.org'
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+static String resolveFromEnv(String envName, String propValue = null) {
+    // Follows Gradle Build Environment precedence rules, properties ahead of environment
+    if(propValue != null && !propValue.isEmpty())
+        return propValue
+    return System.getenv(envName)
+}
+
+if(project.hasProperty('publishMode') && publishMode == 'remote') {
+    publishing {
+        repositories {
+            if (project.hasProperty('snapshotsRepoUrl') || project.hasProperty('releasesRepoUrl')) {
+                maven {
+                    // $HOME/.gradle/gradle.properties would define:
+                    //  publishMode=remote
+                    //  snapshotsRepoUrl=https://myrepo.domain.com/path/snapshots
+                    //  releasesRepoUrl=https://myrepo.domain.com/path/releases
+                    //  remoteRepoUsername=
+                    //  remoteRepoPassword=
+                    url = version.endsWith('-SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+                    credentials {
+                        username resolveFromEnv('MAVEN_USERNAME', remoteRepoUsername)
+                        password resolveFromEnv('MAVEN_PASSWORD', remoteRepoPassword)
+                    }
+                }
+            }
+        }
+    }
+} else if(project.hasProperty('publishMode') && publishMode == 'github-packages') {
+    publishing {
+        repositories {
+            maven {
+                name = "github-packages"
+		var githubRepository = resolveFromEnv('GITHUB_REPOSITORY')
+                url = uri("https://maven.pkg.github.com/${githubRepository}")
+                credentials {
+                    username = resolveFromEnv('GITHUB_ACTOR')
+                    password = resolveFromEnv('GITHUB_TOKEN')
+                }
+            }
+        }
+    }
+} else {
+    // Default is Maven buildDirectory publish only
+    publishing {
+        repositories {
+            maven {
+                url = layout.buildDirectory.dir('repo')
+            }
+        }
+    }
+}

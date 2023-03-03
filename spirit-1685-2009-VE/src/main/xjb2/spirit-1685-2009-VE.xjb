@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jaxb:bindings
+            xmlns:jaxb="http://java.sun.com/xml/ns/jaxb"
+            xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://java.sun.com/xml/ns/jaxb http://java.sun.com/xml/ns/jaxb/bindingschema_2_0.xsd"
+            jaxb:version="2.0">
+
+    <!-- xmlns:spirit="http://www.accellera.org/XMLSchema/SPIRIT/1685-2009-VE"
+      targetNamespace="http://www.accellera.org/XMLSchema/SPIRIT/1685-2009-VE"
+      -->
+    <jaxb:bindings schemaLocation="../schema/1685-2009-VE-1.0/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.SPIRIT_1685_2009_VE"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+    <jaxb:bindings schemaLocation="../schema/1685-2009-VE-1.0/AMS/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.SPIRIT_1685_2009_VE.AMS_1_0"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+    <jaxb:bindings schemaLocation="../schema/1685-2009-VE-1.0/CORE/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.SPIRIT_1685_2009_VE.CORE_1_0"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+    <jaxb:bindings schemaLocation="../schema/1685-2009-VE-1.0/PDP/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.SPIRIT_1685_2009_VE.PDP_1_0"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+    <jaxb:bindings schemaLocation="../schema/1685-2009-VE-1.0/POWER/index.xsd">
+        <jaxb:schemaBindings>
+            <jaxb:package name="org.accellera.SPIRIT_1685_2009_VE.POWER_1_0"/>
+        </jaxb:schemaBindings>
+    </jaxb:bindings>
+
+</jaxb:bindings>
