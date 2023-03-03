@@ -1,0 +1,30 @@
+name: Publish package to GitHub Packages
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+        contents: read
+        packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 11
+          distribution: temurin
+
+      # FIXME signed JARs using github GPG key?
+      - name: Publish package
+        run: ./gradlew -PpublishMode=remote "-DreleasesRepoUrl=${{ env.MAVEN_REPO_URL }}" publish
+        env:
+          MAVEN_REPO_URL: 'https://maven.pkg.github.com/dlmiles/java-schema-ipxact'
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}

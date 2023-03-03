@@ -1,0 +1,352 @@
+name: CI-Gradle-build
+
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    # * is a special character in YAML
+    # setup monthly background build
+    - cron: '30 4 14 * *'
+
+jobs:
+  build:
+    strategy:
+      max-parallel: 3
+      matrix:
+        os: [ubuntu-latest]  #, macos-latest, windows-latest]
+        jaxb: ['2.2', '2.3', '3.0']
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    environment: CI
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: JVM Download
+        env:
+          JVM11_B_URL: ${{ vars.JVM11_B_URL }}
+        run: |
+          echo -n "$JVM11_B_URL" | wget -q -O $RUNNER_TEMP/java_package.tar.gz -i -
+          gunzip -t $RUNNER_TEMP/java_package.tar.gz
+
+      - name: Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'jdkfile'  # temurin
+          jdkFile: ${{ runner.temp }}/java_package.tar.gz
+          java-version: 11
+          architecture: x64
+          mvn-toolchain-vendor: 'jvm11_b'
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle', '**/gradle-wrapper.properties', '**/gradle.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Gradle - setup
+        uses: gradle/gradle-build-action@v2
+
+      - name: Gradle - gradle.properties
+        shell: bash
+        run: |
+          rm -f gradle.properties
+          propFile="$(echo -n "jaxb${{ matrix.jaxb }}" | tr '.' '_').properties" # jaxb2_2.properties
+          cp -v ".github/$propFile" gradle.properties || exit 1
+          echo "=== gradle.properties ==="
+          grep -v "^#" gradle.properties
+          projectVersion=$(egrep "^projectVersion\s*=" gradle.properties | cut -d '=' -f2- | tr -d '\r\n')
+          echo "projectVersion=$projectVersion" >> $GITHUB_ENV
+          if [ -z "$projectVersion" ]; then
+            echo "projectVersion=$projectVersion INVALID" 1>&2
+            exit 1
+          fi
+          if echo -n $projectVersion | fgrep -q -- "-SNAPSHOT"
+          then
+            snapshotVersion=$projectVersion # empty if not SNAPSHOT
+            isSnapshot="true"
+          fi
+          echo "snapshotVersion=$snapshotVersion" >> $GITHUB_ENV
+          echo "isSnapshot=$isSnapshot" >> $GITHUB_ENV
+
+      - name: Gradle - build
+        run: ./gradlew build -Djavax.xml.accessExternalSchema=file,jar,jar:file,maven,classpath -Djavax.xml.accessExternalDTD=file,jar,jar:file,maven,classpath
+
+        # -Djavax.xml.accessExternalDTD=file,jar,jar:file,maven,classpath
+        # -Djavax.xml.accessExternalSchema=file,jar,jar:file,maven,classpath
+        # -Djavax.xml.accessExternalStylesheet=file,jar,jar:file,maven,classpath
+
+      - name: Gradle - check
+        run: ./gradlew check
+
+      - name: Gradle - publish
+        run: ./gradlew publish
+
+      - name: Gradle - publish github-packages
+        if: github.actor == 'dlmiles'
+        run: ./gradlew -PpublishMode=github-packages publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload - prepare
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        shell: bash
+        run: |
+          mkdir -p dist/content/
+          for dir in $(find . -type d -path "*/build/repo")
+          do
+            cp -a "$dir" "dist/content/"
+          done
+          mv "dist/content/repo" "dist/content/maven2"  # rename directory
+
+          #declare -p   # careful if permissions are set
+
+          # GIT SHORT HASH
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "GITHUB_SHA_SHORT=$(echo -n $GITHUB_SHA | cut -c 1-7)"
+          githash=$(git log -1 --format='%h')
+          echo "githash=$githash"
+          echo "githash=$githash" >> $GITHUB_ENV
+          dash_githash=${githash:+-$githash}
+          echo "dash_githash=$dash_githash"
+          echo "dash_githash=$dash_githash" >> $GITHUB_ENV
+
+          # YYYYMMDD from JAR when -SNAPSHOT otherwise $projectVersion
+          if [ -n "$projectVersion" ]; then
+            buildid=$projectVersion
+          fi
+
+          # isolate YYYYMMDD from SNAPSHOT version filename
+          [ -n "$snapshotVersion" ] && buildyyyymmdd=$(find dist \
+                 -type f \
+                 -path "*/*-SNAPSHOT/*" \
+                 -name "ipxact-1685-2014-*.jar" \
+                 -printf "%f\n" | \
+              sed -e 's#ipxact-1685-2014-##' \
+                  -e 's#.jar$##' \
+                  -e 's#-[a-z]\+[g-z][a-z]\+$##' \
+                  -e 's#^[^-]\+\-##' \
+                  -e 's#\-[^-]*$##' \
+                  -e 's#\..*$##' | \
+              sort -r | uniq | head -n 1)
+          [ -z "$buildyyyymmdd" ] && buildyyyymmdd=$(date --utc "+%Y%m%d")
+          echo "buildyyyymmdd=$buildyyyymmdd"
+          echo "buildyyyymmdd=$buildyyyymmdd" >> $GITHUB_ENV
+
+          if [ -n "$snapshotVersion" ]; then
+            dash_buildyyyymmdd=${buildyyyymmdd:+-$buildyyyymmdd}
+            echo "dash_buildyyyymmdd=$dash_buildyyyymmdd"
+            echo "dash_buildyyyymmdd=$dash_buildyyyymmdd" >> $GITHUB_ENV
+          fi
+
+          echo "buildid=$buildid" >> $GITHUB_ENV
+          dash_buildid=${buildid:+-$buildid}
+          echo "dash_buildid=$dash_buildid" >> $GITHUB_ENV
+
+          echo "=== \$GITHUB_ENV ==="
+          cat $GITHUB_ENV
+
+
+          mkdir -p dist/content/javadoc
+          for dir in $(find . -type d -path "*/build/docs/*" -name javadoc)
+          do
+            # ./ipxact-1685-2014/build/docs/javadoc
+            echo $dir
+            stem=$(echo -n "$dir" | sed -e 's#^./##' -e 's#/build/docs/javadoc$##')
+            # ipxact-1685-2014
+
+            cp -a "$dir" "dist/content/javadoc/$stem"
+          done
+
+
+          mkdir -p dist/content/docs
+          cp docs/index.html dist/content/docs/
+
+
+          BUILD_PROPS="dist/content/build.properties"
+          echo "#" >> $BUILD_PROPS
+          echo "# $(date --utc)" >> $BUILD_PROPS
+          echo "#" >> $BUILD_PROPS
+          echo "matrix_os=${{ matrix.os }}" >> $BUILD_PROPS
+          echo "matrix_jaxb=${{ matrix.jaxb }}" >> $BUILD_PROPS
+          echo "projectVersion=$projectVersion" >> $BUILD_PROPS
+          echo "snapshotVersion=$snapshotVersion" >> $BUILD_PROPS
+          echo "isSnapshot=$isSnapshot" >> $BUILD_PROPS
+          echo "buildid=$buildid" >> $BUILD_PROPS
+          echo "dash_buildid=$dash_buildid=" >> $BUILD_PROPS
+          echo "buildyyyymmdd=$buildyyyymmdd" >> $BUILD_PROPS
+          echo "dash_buildyyyymmdd=$dash_buildyyyymmdd" >> $BUILD_PROPS
+          echo "githash=$githash" >> $BUILD_PROPS
+          echo "dash_githash=$dash_githash" >> $BUILD_PROPS
+          echo "#" >> $BUILD_PROPS
+          
+          sed -e 's#\"#\\\"#' -e 's#\(.*=\)#\1\"#' -e 's#\(.*=\".*\)$#\1"#' $BUILD_PROPS > dist/content/build.sh 
+          
+          echo "=== $BUILD_PROPS:"
+          cat $BUILD_PROPS
+
+          echo "=== dist/ summary:"
+          echo "file_count=$(find dist -type f | wc -l)"
+          echo "dir_count=$(find dist -type d | wc -l)"
+          echo "disk_usage=$(du -sh dist)"
+          
+          tar -zcf dist/artifacts.tar.gz -C dist/content .
+
+      - name: Upload - perform
+        uses: actions/upload-artifact@v3
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        with:
+          name: java-schema-ipxact-maven2-jaxb${{ matrix.jaxb }}-artifacts
+          path: dist/artifacts.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+
+  gh-pages-prepare:
+    needs: build
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # java-schema-ipxact-maven-m2-artifacts-jaxb${{ matrix.jaxb }}${{ env.dash_buildid }}${{ env.dash_buildyyyymmdd }}${{ env.dash_githash }}
+      - name: Download - java-schema-ipxact-maven2-jaxb2.2-artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: java-schema-ipxact-maven2-jaxb2.2-artifacts
+          path: build/java-jaxb2.2-artifacts/
+
+      - name: Download - java-schema-ipxact-maven2-jaxb2.3-artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: java-schema-ipxact-maven2-jaxb2.3-artifacts
+          path: build/java-jaxb2.3-artifacts/
+
+      - name: Download - java-schema-ipxact-maven2-jaxb3.0-artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: java-schema-ipxact-maven2-jaxb3.0-artifacts
+          path: build/java-jaxb3.0-artifacts/
+
+      - name: Shell
+        run: |
+          pwd
+          ls -la
+          ls -la build || true
+          ls -la build/java-jaxb2.2-artifacts || true
+          ls -la build/java-jaxb2.3-artifacts || true
+          ls -la build/java-jaxb3.0-artifacts || true
+          #find . -type f
+          #ls -lR build
+          #declare -p	# careful if permissions are set
+
+          echo "### build/java-jaxb2.2-artifacts/artifacts.tar.gz:"
+          [ ! -f "build/java-jaxb2.2-artifacts/artifacts.tar.gz" ] || tar -xf "build/java-jaxb2.2-artifacts/artifacts.tar.gz" -C build/java-jaxb2.2-artifacts
+
+          echo "### build/java-jaxb2.3-artifacts/artifacts.tar.gz:"
+          [ ! -f "build/java-jaxb2.3-artifacts/artifacts.tar.gz" ] || tar -xf "build/java-jaxb2.3-artifacts/artifacts.tar.gz" -C build/java-jaxb2.3-artifacts
+
+          echo "### build/java-jaxb3.0-artifacts/artifacts.tar.gz:"
+          [ ! -f "build/java-jaxb3.0-artifacts/artifacts.tar.gz" ] || tar -xf "build/java-jaxb3.0-artifacts/artifacts.tar.gz" -C build/java-jaxb3.0-artifacts
+
+          cat "build/java-jaxb2.2-artifacts/build.properties"
+
+          mkdir -p build/gh-pages/
+
+          #        build/gh-pages/artifacts
+          mkdir -p build/gh-pages/artifacts
+
+          source "build/java-jaxb2.2-artifacts/build.sh"
+
+          name="java-schema-ipxact-maven2-jaxb${matrix_jaxb}${dash_buildid}${dash_buildyyyymmdd}${dash_githash}-artifacts"
+          tar -cf   "build/gh-pages/artifacts/${name}.tar.gz"  -C "build/java-jaxb${matrix_jaxb}-artifacts/maven2" .
+          pushd "build/java-jaxb${matrix_jaxb}-artifacts/maven2"
+          zip -q -r "../../gh-pages/artifacts/${name}.zip"  .
+          popd
+
+          source "build/java-jaxb2.3-artifacts/build.sh"
+
+          name="java-schema-ipxact-maven2-jaxb${matrix_jaxb}${dash_buildid}${dash_buildyyyymmdd}${dash_githash}-artifacts"
+          tar -cf   "build/gh-pages/artifacts/${name}.tar.gz" -C "build/java-jaxb${matrix_jaxb}-artifacts/maven2" .
+          pushd "build/java-jaxb${matrix_jaxb}-artifacts/maven2"
+          zip -q -r "../../gh-pages/artifacts/${name}.zip" .
+          popd
+
+          source "build/java-jaxb3.0-artifacts/build.sh"
+
+          name="java-schema-ipxact-maven2-jaxb${matrix_jaxb}${dash_buildid}${dash_buildyyyymmdd}${dash_githash}-artifacts"
+          tar -cf   "build/gh-pages/artifacts/${name}.tar.gz" -C "build/java-jaxb${matrix_jaxb}-artifacts/maven2" .
+          pushd "build/java-jaxb${matrix_jaxb}-artifacts/maven2"
+          zip -q -r "../../gh-pages/artifacts/${name}.zip" .
+          popd
+
+          #        build/gh-pages/javadoc
+          mkdir -p build/gh-pages/javadoc
+          cp -a build/java-jaxb2.2-artifacts/javadoc  build/gh-pages/javadoc/jaxb2.2
+          cp -a build/java-jaxb2.3-artifacts/javadoc  build/gh-pages/javadoc/jaxb2.3
+          cp -a build/java-jaxb3.0-artifacts/javadoc  build/gh-pages/javadoc/jaxb3.0
+
+          #        build/gh-pages/maven2
+          mkdir -p build/gh-pages/maven2
+          cp -a build/java-jaxb2.2-artifacts/maven2    build/gh-pages/
+          cp -a build/java-jaxb2.3-artifacts/maven2    build/gh-pages/
+          cp -a build/java-jaxb3.0-artifacts/maven2    build/gh-pages/
+          touch build/gh-pages/maven2/M2_Java8_Artifacts.txt
+
+          # build/gh-pages/index.html (asciidoctor)
+          cp -a build/java-jaxb3.0-artifacts/docs/*    build/gh-pages/
+
+          echo "#### DONE ####"
+          pwd
+          ls -la
+          find . -type f
+          ls -lR build
+
+      - name: github-pages - artifacts/ Generate Directory Listings
+        uses: jayanta525/github-pages-directory-listing@19ee734e017b656528749434335f75a1efb931bc
+        with:
+          FOLDER: build/gh-pages/artifacts/      #directory to generate index
+
+      - name: github-pages - maven2/ Generate Directory Listings
+        uses: jayanta525/github-pages-directory-listing@19ee734e017b656528749434335f75a1efb931bc
+        with:
+          FOLDER: build/gh-pages/maven2/          #directory to generate index
+
+      - name: github-pages - javadoc/ Generate Directory Listings
+        uses: jayanta525/github-pages-directory-listing@19ee734e017b656528749434335f75a1efb931bc
+        with:
+          FOLDER: build/gh-pages/javadoc/         #directory to generate index
+
+      - name: Upload - github-pages
+        uses: actions/upload-pages-artifact@main
+        with:
+          name: github-pages
+          path: build/gh-pages/
+          retention-days: 90
+
+
+  deploy:
+    if: ( github.ref == 'master' && github.event_name == 'push' ) || github.event_name == 'release' || github.event_name == 'schedule'
+    needs: gh-pages-prepare
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
